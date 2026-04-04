@@ -1,27 +1,19 @@
 #!/usr/bin/env python3
 """
 Baseline Inference Script for OpenEnv Email Triage Environment
-Uses OpenAI-compatible API (supports OpenAI, Groq, or any OpenAI-compatible provider)
+Implements the required OpenEnv inference interface using OpenAI-compatible API
 
 CRITICAL: Must follow strict [START], [STEP], and [END] logging format
 
-Environment Variables:
-  HF_TOKEN              - Hugging Face token (for OpenEnv competition evaluator - PRIORITY)
-  OPENAI_API_KEY        - OpenAI API key (for OpenAI models)
-  GROQ_API_KEY          - Groq API key (for Groq models - FREE!)
-  MODEL_NAME            - Model identifier (gpt-4, mixtral-8x7b-32768, etc.)
-  API_BASE_URL          - API endpoint (defaults to OpenAI)
+Required Environment Variables:
+  API_BASE_URL   The API endpoint for the LLM (defaults to OpenAI)
+  MODEL_NAME     The model identifier to use for inference (required)
+  HF_TOKEN       Your Hugging Face / API key (required by competition)
 
-Examples:
-  # OpenAI
-  export OPENAI_API_KEY="sk-..." && export MODEL_NAME="gpt-4" && python inference.py
-
-  # Groq (FREE!)
-  export GROQ_API_KEY="gsk-..." && export MODEL_NAME="mixtral-8x7b-32768" && \
-  export API_BASE_URL="https://api.groq.com/openai/v1" && python inference.py
-
-  # HF Token (Competition)
-  export HF_TOKEN="hf_..." && export MODEL_NAME="gpt-4" && python inference.py
+The script emits exactly three line types to stdout:
+  [START] task=<task_name> env=openenv-email-triage model=<model_name>
+  [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
+  [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
 """
 
 import os
@@ -41,33 +33,21 @@ from models import (
 )
 
 # ─── Configuration ────────────────────────────────────────────────────────────
+# Required by competition evaluator:
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-HF_TOKEN = os.getenv("HF_TOKEN")
-
-# Priority: HF_TOKEN (competition evaluator) > GROQ_API_KEY > OPENAI_API_KEY
-is_groq = "groq.com" in API_BASE_URL or (GROQ_API_KEY and not HF_TOKEN and not OPENAI_API_KEY)
-api_key = HF_TOKEN or GROQ_API_KEY or OPENAI_API_KEY
-
-if not api_key:
-    print("[ERROR] None of HF_TOKEN, GROQ_API_KEY, or OPENAI_API_KEY environment variables set")
-    print("\nUsage:")
-    print("  HF Token:  export HF_TOKEN='hf_...' && python inference.py")
-    print("  OpenAI:    export OPENAI_API_KEY='sk-...' && python inference.py")
-    print("  Groq:      export GROQ_API_KEY='gsk-...' && export API_BASE_URL='https://api.groq.com/openai/v1' && python inference.py")
+if not API_KEY:
+    print("[ERROR] HF_TOKEN or OPENAI_API_KEY environment variable must be set")
+    print("\nUsage (Competition):")
+    print("  export HF_TOKEN='hf_...' && export MODEL_NAME='gpt-4' && python inference.py")
+    print("\nUsage (Local Testing):")
+    print("  export OPENAI_API_KEY='sk-...' && export MODEL_NAME='gpt-4' && python inference.py")
     sys.exit(1)
 
-# Initialize OpenAI-compatible client
-# For Groq we pass base_url; for OpenAI we use the default
-if API_BASE_URL != "https://api.openai.com/v1":
-    client = OpenAI(api_key=api_key, base_url=API_BASE_URL)
-else:
-    client = OpenAI(api_key=api_key)
-
-provider = "Groq" if is_groq else "OpenAI"
+# Initialize OpenAI-compatible client with competition-provided credentials
+client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -325,7 +305,6 @@ def main():
 
     results = {
         "timestamp": datetime.now().isoformat(),
-        "provider": provider,
         "model": MODEL_NAME,
         "api_base": API_BASE_URL,
         "tasks": {}

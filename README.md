@@ -475,50 +475,44 @@ openenv-email-triage/
 ├── validate.py                        # Local validation tests
 ├── test_inference_logic.py            # Unit tests
 │
-└── env/                               # Environment package
-    ├── __init__.py
-    ├── environment.py                 # Main EmailTriageEnv class
-    ├── models.py                      # Pydantic models (Email, Action, Reward, etc.)
-    │
-    ├── tasks/
-    │   ├── __init__.py
-    │   └── definitions.py             # Task configs + email data
-    │
-    └── graders/
-        ├── __init__.py
-        └── task_graders.py            # Scoring functions for all 3 tasks
+├── environment.py                     # Main EmailTriageEnv class
+├── models.py                          # Pydantic models (Email, Action, Reward, etc.)
+├── definitions.py                     # Task configs + email data
+├── expanded_emails.py                 # Diverse email dataset (141 emails)
+├── task_graders.py                    # Scoring functions for all 3 tasks
+└── dynamic_grader.py                  # LLM-based dynamic grading (fallback)
 ```
 
 ## Configuration
 
 ### Task Difficulty Settings
 
-Modify `env/tasks/definitions.py` TASK_CONFIGS:
+Modify `definitions.py` TASK_CONFIGS:
 
 ```python
 TASK_CONFIGS = {
     "email_priority_classification": {
         "name": "Email Priority Classification",
         "difficulty": "easy",
-        "emails_per_episode": 5,      # Emails per episode
-        "max_steps": 10,               # Max steps before episode ends
+        "emails_per_episode": 15,      # Emails per episode
+        "max_steps": 20,               # Max steps before episode ends
     },
     "urgency_detection": {
         "difficulty": "medium",
-        "emails_per_episode": 7,
-        "max_steps": 15,
+        "emails_per_episode": 20,
+        "max_steps": 30,
     },
     "intelligent_routing": {
         "difficulty": "hard",
-        "emails_per_episode": 10,
-        "max_steps": 20,
+        "emails_per_episode": 25,
+        "max_steps": 40,
     },
 }
 ```
 
 ### Adding Custom Emails
 
-Edit `env/tasks/definitions.py`:
+Edit `definitions.py`:
 
 ```python
 def get_training_emails() -> List[Email]:
@@ -542,7 +536,7 @@ def get_training_emails() -> List[Email]:
 
 ### Customizing Grading
 
-Modify `env/graders/task_graders.py` to adjust reward functions:
+Modify `task_graders.py` to adjust reward functions:
 
 ```python
 class EmailPriorityGrader:
