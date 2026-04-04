@@ -1,0 +1,11 @@
+"""
+HuggingFace Spaces ASGI entrypoint.
+This module exposes the FastAPI app for HF Spaces to load.
+HF Spaces expects to find an 'app' attribute at the root level.
+"""
+
+from server.app import app
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=7860)
