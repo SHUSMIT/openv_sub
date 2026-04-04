@@ -6,6 +6,7 @@ Uses OpenAI-compatible API (supports OpenAI, Groq, or any OpenAI-compatible prov
 CRITICAL: Must follow strict [START], [STEP], and [END] logging format
 
 Environment Variables:
+  HF_TOKEN              - Hugging Face token (for OpenEnv competition evaluator - PRIORITY)
   OPENAI_API_KEY        - OpenAI API key (for OpenAI models)
   GROQ_API_KEY          - Groq API key (for Groq models - FREE!)
   MODEL_NAME            - Model identifier (gpt-4, mixtral-8x7b-32768, etc.)
@@ -16,8 +17,11 @@ Examples:
   export OPENAI_API_KEY="sk-..." && export MODEL_NAME="gpt-4" && python inference.py
 
   # Groq (FREE!)
-  export GROQ_API_KEY="gsk-..." && export MODEL_NAME="mixtral-8x7b-32768" && \\
+  export GROQ_API_KEY="gsk-..." && export MODEL_NAME="mixtral-8x7b-32768" && \
   export API_BASE_URL="https://api.groq.com/openai/v1" && python inference.py
+
+  # HF Token (Competition)
+  export HF_TOKEN="hf_..." && export MODEL_NAME="gpt-4" && python inference.py
 """
 
 import os
@@ -42,15 +46,18 @@ MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-is_groq = "groq.com" in API_BASE_URL or (GROQ_API_KEY and not OPENAI_API_KEY)
-api_key = GROQ_API_KEY if is_groq else OPENAI_API_KEY
+# Priority: HF_TOKEN (competition evaluator) > GROQ_API_KEY > OPENAI_API_KEY
+is_groq = "groq.com" in API_BASE_URL or (GROQ_API_KEY and not HF_TOKEN and not OPENAI_API_KEY)
+api_key = HF_TOKEN or GROQ_API_KEY or OPENAI_API_KEY
 
 if not api_key:
-    print("[ERROR] Neither OPENAI_API_KEY nor GROQ_API_KEY environment variable set")
+    print("[ERROR] None of HF_TOKEN, GROQ_API_KEY, or OPENAI_API_KEY environment variables set")
     print("\nUsage:")
-    print("  OpenAI:  export OPENAI_API_KEY='sk-...' && python inference.py")
-    print("  Groq:    export GROQ_API_KEY='gsk-...' && export API_BASE_URL='https://api.groq.com/openai/v1' && python inference.py")
+    print("  HF Token:  export HF_TOKEN='hf_...' && python inference.py")
+    print("  OpenAI:    export OPENAI_API_KEY='sk-...' && python inference.py")
+    print("  Groq:      export GROQ_API_KEY='gsk-...' && export API_BASE_URL='https://api.groq.com/openai/v1' && python inference.py")
     sys.exit(1)
 
 # Initialize OpenAI-compatible client

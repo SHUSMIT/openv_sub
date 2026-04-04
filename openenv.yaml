@@ -1,6 +1,7 @@
 id: openenv-email-triage
 name: EmailTriageEnv
 version: "1.0.0"
+description: Real-world email triage and response prioritization environment for AI agents
 metadata:
   description: Real-world email triage and response prioritization environment for AI agents
   domain: customer_support
