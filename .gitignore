@@ -13,3 +13,13 @@ ENV/
 *.swp
 baseline_results.json
 *.results
+
+# Deployment scripts with credentials
+deploy_hf.py
+push_readme_hf.py
+push_hf_fix.py
+push_hf_simple.py
+set_hf_secrets.py
+set_hf_secrets_v2.py
+fix_hf_imports.py
+.huggingface/
