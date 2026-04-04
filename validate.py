@@ -12,13 +12,13 @@ from typing import Dict, Any
 # Add repo root to path so imports work
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from env.environment import EmailTriageEnv
-from env.models import (
+from environment import EmailTriageEnv
+from models import (
     Action, ActionClassifyPriority, ActionDetectUrgency, ActionRouteAndRespond,
     PriorityLevel, UrgencySignal, RoutingTeam
 )
-from env.tasks.definitions import get_task_config, TASK_CONFIGS
-from env.graders.task_graders import EmailPriorityGrader, UrgencyDetectionGrader, IntelligentRoutingGrader
+from definitions import get_task_config, TASK_CONFIGS
+from task_graders import EmailPriorityGrader, UrgencyDetectionGrader, IntelligentRoutingGrader
 
 
 def test_task_configs() -> bool:

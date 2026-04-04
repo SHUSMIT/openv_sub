@@ -1,6 +1,6 @@
 """Quick test of environment with new features"""
-from env.environment import EmailTriageEnv
-from env.models import Action, ActionClassifyPriority, PriorityLevel
+from environment import EmailTriageEnv
+from models import Action, ActionClassifyPriority, PriorityLevel
 
 # Test a step action
 env = EmailTriageEnv(task_id='email_priority_classification', seed=42, use_dynamic_grader=False)

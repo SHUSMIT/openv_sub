@@ -10,8 +10,8 @@ import uvicorn
 import json
 from typing import Dict, Any, Optional
 
-from env.environment import EmailTriageEnv
-from env.models import Action, Observation, Reward, State
+from environment import EmailTriageEnv
+from models import Action, Observation, Reward, State
 
 # Global environment instances (one per task)
 environments: Dict[str, EmailTriageEnv] = {}

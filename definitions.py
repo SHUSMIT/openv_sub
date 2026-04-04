@@ -5,10 +5,10 @@ Covers: Healthcare, Finance, E-commerce, SaaS, Education, and edge cases
 
 import random
 from typing import List, Dict, Any
-from env.models import Email
+from models import Email
 
 try:
-    from env.tasks.expanded_emails import get_all_emails, get_critical_emails, get_emails_by_industry
+    from expanded_emails import get_all_emails, get_critical_emails, get_emails_by_industry
 except ModuleNotFoundError:
     try:
         from expanded_emails import get_all_emails, get_critical_emails, get_emails_by_industry

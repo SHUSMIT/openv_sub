@@ -4,8 +4,8 @@ Quick manual test of inference script (without OpenAI calls)
 Tests the action parsing and reward logic
 """
 
-from env.environment import EmailTriageEnv
-from env.models import (
+from environment import EmailTriageEnv
+from models import (
     Action, ActionClassifyPriority, ActionDetectUrgency, ActionRouteAndRespond,
     PriorityLevel, UrgencySignal, RoutingTeam
 )

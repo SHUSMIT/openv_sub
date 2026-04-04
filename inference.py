@@ -30,8 +30,8 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from openai import OpenAI
-from env.environment import EmailTriageEnv
-from env.models import (
+from environment import EmailTriageEnv
+from models import (
     Action, ActionClassifyPriority, ActionDetectUrgency, ActionRouteAndRespond,
     PriorityLevel, UrgencySignal, RoutingTeam
 )

@@ -581,8 +581,8 @@ python -m pytest test_inference_logic.py -v
 ### Manual Testing
 
 ```python
-from env.environment import EmailTriageEnv
-from env.models import Action, ActionClassifyPriority, PriorityLevel
+from environment import EmailTriageEnv
+from models import Action, ActionClassifyPriority, PriorityLevel
 
 # Create environment
 env = EmailTriageEnv(task_id="email_priority_classification", seed=42)

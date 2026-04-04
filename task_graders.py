@@ -3,7 +3,7 @@ Task graders - evaluate agent performance with deterministic scoring
 """
 
 from typing import Dict, Tuple, List, Any
-from env.models import (
+from models import (
     Email, Action, PriorityLevel, RoutingTeam, UrgencySignal,
     ActionClassifyPriority, ActionDetectUrgency, ActionRouteAndRespond
 )

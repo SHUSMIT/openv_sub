@@ -6,7 +6,7 @@ Uses Claude/GPT to evaluate email handling quality beyond hardcoded ground truth
 import os
 import json
 from typing import Tuple, Dict, Any, Optional
-from env.models import (
+from models import (
     Email, Action, PriorityLevel, RoutingTeam, UrgencySignal,
     ActionClassifyPriority, ActionDetectUrgency, ActionRouteAndRespond
 )

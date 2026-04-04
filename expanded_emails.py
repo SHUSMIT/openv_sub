@@ -5,7 +5,7 @@ Programmatically generated for maximum variety and realism.
 
 from datetime import datetime
 from typing import List
-from env.models import Email
+from models import Email
 
 
 def get_all_emails() -> List[Email]:

@@ -8,14 +8,22 @@ import random
 from typing import Tuple, Dict, Any, Optional, List
 from datetime import datetime
 
-from env.models import Email, Action, Observation, Reward, State, PriorityLevel
-from env.tasks.definitions import get_emails_for_task, get_task_config
-from env.graders.task_graders import (
+from models import Email, Action, Observation, Reward, State, PriorityLevel
+from definitions import get_emails_for_task, get_task_config
+from task_graders import (
     EmailPriorityGrader,
     UrgencyDetectionGrader,
     IntelligentRoutingGrader,
 )
-from env.graders.dynamic_grader import DynamicLLMGrader
+
+try:
+    from dynamic_grader import DynamicLLMGrader
+except ModuleNotFoundError:
+    class DynamicLLMGrader:  # type: ignore[no-redef]
+        """Fallback stub used when dynamic grader module is unavailable in deployment."""
+
+        def __init__(self, use_llm: bool = False):
+            self.use_llm = False
 
 
 class EmailTriageEnv:

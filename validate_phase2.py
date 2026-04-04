@@ -3,10 +3,10 @@ Comprehensive validation of all Phase 2 enhancements (141 emails, LLM grading, m
 This validates that we've reached 100/100 score criteria.
 """
 import json
-from env.environment import EmailTriageEnv
-from env.models import Action, ActionClassifyPriority, PriorityLevel
-from env.tasks.expanded_emails import get_all_emails, get_critical_emails
-from env.tasks.definitions import get_emails_by_industry
+from environment import EmailTriageEnv
+from models import Action, ActionClassifyPriority, PriorityLevel
+from expanded_emails import get_all_emails, get_critical_emails
+from definitions import get_emails_by_industry
 
 print("=" * 70)
 print("OPENENV EMAIL TRIAGE - PHASE 2 ENHANCEMENT VALIDATION")
