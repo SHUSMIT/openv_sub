@@ -13,3 +13,9 @@ ENV/
 *.swp
 baseline_results.json
 *.results
+# Deployment helper scripts (may contain credentials, should not be committed)
+deploy_hf.py
+set_hf_secrets.py
+set_hf_secrets_v2.py
+push_hf_*.py
+fix_hf_imports.py
