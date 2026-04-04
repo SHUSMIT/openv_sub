@@ -270,7 +270,8 @@ class EmailTriageEnv:
         base_reward, grading_details = self._get_grading(current_email, action)
         
         # Apply multi-turn consequences and cascade effects
-        step_reward = self._apply_multi_turn_consequences(current_email, base_reward, action)
+        raw_step_reward = self._apply_multi_turn_consequences(current_email, base_reward, action)
+        step_reward = max(-1.0, min(1.0, raw_step_reward))
 
         self.step_count += 1
         self.episode_reward = step_reward
@@ -280,7 +281,9 @@ class EmailTriageEnv:
         self.action_cache[current_email.email_id] = {
             "action": action.model_dump(),
             "reward": step_reward,
+            "raw_reward": raw_step_reward,
             "grading_details": grading_details,
+            "reward_clipped": step_reward != raw_step_reward,
         }
 
         self.episode_history.append({
@@ -288,10 +291,12 @@ class EmailTriageEnv:
             "email_id": current_email.email_id,
             "action": action.model_dump(),
             "base_reward": base_reward,
+            "raw_reward": raw_step_reward,
             "reward": step_reward,
             "cumulative_reward": self.cumulative_reward,
             "grading_details": grading_details,
-            "multi_turn_adjusted": step_reward != base_reward,
+            "multi_turn_adjusted": raw_step_reward != base_reward,
+            "reward_clipped": step_reward != raw_step_reward,
         })
 
         self.current_email_idx += 1
@@ -308,14 +313,16 @@ class EmailTriageEnv:
             is_done=self.episode_done,
             breakdown={
                 "base_reward": base_reward,
-                "multi_turn_adjustment": step_reward - base_reward,
+                "multi_turn_adjustment": raw_step_reward - base_reward,
+                "clip_adjustment": step_reward - raw_step_reward,
                 "final_reward": step_reward
             },
             info={
                 "grading_details": grading_details,
                 "emails_remaining": max(0, len(self.emails) - self.current_email_idx),
                 "max_steps": max_steps,
-                "multi_turn_adjusted": step_reward != base_reward,
+                "multi_turn_adjusted": raw_step_reward != base_reward,
+                "reward_clipped": step_reward != raw_step_reward,
             }
         )
 
@@ -325,6 +332,7 @@ class EmailTriageEnv:
             "episode_done": self.episode_done,
             "grading_details": grading_details,
             "base_reward": base_reward,
+            "raw_final_reward": raw_step_reward,
             "final_reward": step_reward,
         }
 
@@ -353,9 +361,7 @@ class EmailTriageEnv:
 
     def get_episode_summary(self) -> Dict[str, Any]:
         """Get summary statistics for completed episode"""
-        if not self.episode_done:
-            return {"status": "episode_not_complete"}
-
+        status = "episode_complete" if self.episode_done else "episode_in_progress"
         return {
             "task_id": self.task_id,
             "total_steps": self.step_count,
@@ -363,7 +369,9 @@ class EmailTriageEnv:
             "average_step_reward": self.cumulative_reward / max(1, self.step_count),
             "emails_processed": self.current_email_idx,
             "episode_history": self.episode_history,
-            "success": self.cumulative_reward > 0.5 * self.step_count,
+            "success": self.cumulative_reward > 0.5 * max(1, self.step_count),
+            "episode_complete": self.episode_done,
+            "status": status,
         }
 
 

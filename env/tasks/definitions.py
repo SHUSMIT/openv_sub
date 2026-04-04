@@ -6,7 +6,93 @@ Covers: Healthcare, Finance, E-commerce, SaaS, Education, and edge cases
 import random
 from typing import List, Dict, Any
 from env.models import Email
-from env.tasks.expanded_emails import get_all_emails, get_critical_emails, get_emails_by_industry
+
+try:
+    from env.tasks.expanded_emails import get_all_emails, get_critical_emails, get_emails_by_industry
+except ModuleNotFoundError:
+    try:
+        from expanded_emails import get_all_emails, get_critical_emails, get_emails_by_industry
+    except ModuleNotFoundError:
+        # Fallback keeps the environment runnable if deployment packaging misses expanded_emails.py.
+        _FALLBACK_INDUSTRIES = ["healthcare", "finance", "ecommerce", "saas", "education"]
+        _FALLBACK_CONTEXTS = [
+            "mixed_priority",
+            "sarcastic_complaint",
+            "vague_complaint",
+            "cascade_incident",
+            "escalation_required",
+            "vip_opportunity",
+            "system_outage",
+            "deadline_risk",
+            "enterprise_partnership",
+            None,
+        ]
+        _FALLBACK_EMAIL_CACHE: List[Email] = []
+
+        def _build_fallback_emails() -> List[Email]:
+            emails: List[Email] = []
+            previous_by_industry: Dict[str, str] = {}
+            base_timestamp = 1712200000.0
+
+            for idx in range(30):
+                industry = _FALLBACK_INDUSTRIES[idx % len(_FALLBACK_INDUSTRIES)]
+                scenario_context = _FALLBACK_CONTEXTS[idx % len(_FALLBACK_CONTEXTS)]
+                is_critical = (idx % 6 == 0)
+                is_urgent = (idx % 5 == 0 and not is_critical)
+
+                subject_prefix = "CRITICAL: " if is_critical else "URGENT: " if is_urgent else ""
+                email_stub = (
+                    "ambig"
+                    if scenario_context in {"mixed_priority", "sarcastic_complaint", "vague_complaint"} and idx % 2 == 0
+                    else "fallback"
+                )
+                email_id = f"{email_stub}_{industry}_{idx:03d}"
+
+                parent_email_id = previous_by_industry.get(industry) if idx % 4 == 0 else None
+                escalation_chain = [parent_email_id] if parent_email_id else None
+
+                emails.append(
+                    Email(
+                        email_id=email_id,
+                        sender=f"customer{idx}@{industry}.example.com",
+                        subject=f"{subject_prefix}{industry.title()} support issue #{idx}",
+                        body=(
+                            f"I need help with a {industry} workflow issue. "
+                            f"Scenario: {scenario_context or 'general_request'}."
+                        ),
+                        timestamp=base_timestamp + float(idx * 60),
+                        sender_history=idx % 5,
+                        is_reply=parent_email_id is not None,
+                        attachments=idx % 3,
+                        customer_lifetime_value=min(1.0, 0.25 + (idx % 8) * 0.1),
+                        parent_email_id=parent_email_id,
+                        escalation_chain=escalation_chain,
+                        industry=industry,
+                        previous_agent_action="follow_up_requested" if parent_email_id else None,
+                        scenario_context=scenario_context,
+                    )
+                )
+                previous_by_industry[industry] = email_id
+
+            return emails
+
+        def _get_cached_fallback_emails() -> List[Email]:
+            if not _FALLBACK_EMAIL_CACHE:
+                _FALLBACK_EMAIL_CACHE.extend(_build_fallback_emails())
+            return _FALLBACK_EMAIL_CACHE
+
+        def get_all_emails() -> List[Email]:
+            return list(_get_cached_fallback_emails())
+
+        def get_critical_emails() -> List[Email]:
+            return [
+                email
+                for email in _get_cached_fallback_emails()
+                if "CRITICAL" in email.subject or email.scenario_context in {"system_outage", "cascade_incident"}
+            ]
+
+        def get_emails_by_industry(industry: str) -> List[Email]:
+            return [email for email in _get_cached_fallback_emails() if email.industry == industry]
 
 
 def get_training_emails() -> List[Email]:
