@@ -1,0 +1,53 @@
+name: OpenEnv Validation
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run validation tests
+        run: |
+          python validate.py
+
+      - name: Test inference logic (no API calls)
+        run: |
+          python test_inference_logic.py
+
+      - name: OpenEnv spec validation
+        run: |
+          pip install pyyaml
+          python -c "
+          import yaml
+          with open('openenv.yaml', 'r') as f:
+              spec = yaml.safe_load(f)
+              assert 'name' in spec
+              assert 'version' in spec
+              assert 'endpoints' in spec
+              assert 'tasks' in spec
+              assert len(spec['tasks']) >= 3
+              print('OpenEnv spec is valid')
+          "
+
+      - name: Summary
+        run: |
+          echo "All validation checks passed"
+          echo "Environment is ready for deployment"

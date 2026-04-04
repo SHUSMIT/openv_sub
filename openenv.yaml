@@ -1,0 +1,38 @@
+name: EmailTriageEnv
+version: "1.0.0"
+metadata:
+  description: Real-world email triage and response prioritization environment for AI agents
+  domain: customer_support
+  difficulty: [easy, medium, hard]
+  task_count: 3
+  author: OpenEnv Community
+  created: 2025-04-03
+
+endpoints:
+  reset: /reset
+  step: /step
+  state: /state
+
+environment:
+  observation_model: Observation
+  action_model: Action
+  reward_model: Reward
+
+tasks:
+  - id: "email_priority_classification"
+    name: "Email Priority Classification"
+    difficulty: easy
+    description: "Classify incoming emails by priority level (0-3 scale)"
+    grader: email_priority_grader
+
+  - id: "urgency_detection"
+    name: "Urgency & Escalation Detection"
+    difficulty: medium
+    description: "Detect urgency signals and recommend escalation"
+    grader: urgency_detection_grader
+
+  - id: "intelligent_routing"
+    name: "Intelligent Email Routing & Response"
+    difficulty: hard
+    description: "Route emails to correct team and compose responses"
+    grader: intelligent_routing_grader

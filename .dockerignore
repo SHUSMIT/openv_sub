@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+*.pyc
+.git/
+.gitignore
+.env
+.venv
+venv/
+*.md
+*.results
+baseline_results.json
+.idea/
+.vscode/
