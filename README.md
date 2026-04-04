@@ -1,3 +1,13 @@
+---
+title: OpenEnv Email Triage
+emoji: 📧
+colorFrom: purple
+colorTo: blue
+sdk: docker
+app_file: server.py
+pinned: false
+---
+
 # OpenEnv Email Triage Environment
 
 A real-world email triage and intelligent routing environment for training and evaluating AI agents using the OpenEnv framework. This environment simulates realistic customer support workflows where agents must classify emails by priority, detect urgency signals, and route to appropriate teams.
