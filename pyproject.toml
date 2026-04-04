@@ -38,10 +38,19 @@ Repository = "https://github.com/SHUSMIT/openv_sub"
 Documentation = "https://github.com/SHUSMIT/openv_sub"
 
 [tool.setuptools]
-packages = ["openenv_email_triage"]
+py-modules = [
+  "environment",
+  "models",
+  "definitions",
+  "expanded_emails",
+  "task_graders",
+  "dynamic_grader",
+  "server",
+  "inference",
+]
 
 [tool.setuptools.package-data]
-openenv_email_triage = ["*.yaml", "*.yml"]
+"*" = ["*.yaml", "*.yml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
