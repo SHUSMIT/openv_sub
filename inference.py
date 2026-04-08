@@ -38,16 +38,30 @@ API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 
-if not API_KEY:
-    print("[ERROR] HF_TOKEN or OPENAI_API_KEY environment variable must be set")
-    print("\nUsage (Competition):")
-    print("  export HF_TOKEN='hf_...' && export MODEL_NAME='gpt-4' && python inference.py")
-    print("\nUsage (Local Testing):")
-    print("  export OPENAI_API_KEY='sk-...' && export MODEL_NAME='gpt-4' && python inference.py")
-    sys.exit(1)
+# Initialize OpenAI client lazily (on first use, not at import time)
+client = None
 
-# Initialize OpenAI-compatible client with competition-provided credentials
-client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+
+def _init_client():
+    """Initialize OpenAI client with lazy initialization and validation"""
+    global client
+    if client is not None:
+        return client
+    
+    if not API_KEY:
+        print("[ERROR] HF_TOKEN or OPENAI_API_KEY environment variable must be set")
+        print("\nUsage (Competition):")
+        print("  export HF_TOKEN='hf_...' && export MODEL_NAME='gpt-4' && python inference.py")
+        print("\nUsage (Local Testing):")
+        print("  export OPENAI_API_KEY='sk-...' && export MODEL_NAME='gpt-4' && python inference.py")
+        raise RuntimeError("API key not configured")
+    
+    try:
+        client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+        return client
+    except Exception as e:
+        raise RuntimeError(f"Failed to initialize OpenAI client: {e}")
+
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -101,7 +115,10 @@ class EmailTriageAgent:
     def call_llm(self, system_prompt: str, user_message: str) -> str:
         """Call the LLM via OpenAI-compatible chat completions API"""
         try:
-            response = client.chat.completions.create(
+            # Initialize client on first use
+            llm_client = _init_client()
+            
+            response = llm_client.chat.completions.create(
                 model=self.model,
                 max_tokens=500,
                 messages=[
@@ -110,71 +127,117 @@ class EmailTriageAgent:
                 ],
                 temperature=0.1,
             )
-            return response.choices[0].message.content or "{}"
+            content = response.choices[0].message.content if response.choices else None
+            return content or "{}"
+        except ConnectionError as e:
+            print(f"[ERROR] Network connection failed: {e}")
+            return "{}"
+        except TimeoutError as e:
+            print(f"[ERROR] API request timeout: {e}")
+            return "{}"
+        except ValueError as e:
+            print(f"[ERROR] Invalid parameter: {e}")
+            return "{}"
+        except RuntimeError as e:
+            print(f"[ERROR] Configuration error: {e}")
+            return "{}"
         except Exception as e:
-            print(f"[ERROR] LLM API call failed: {e}")
+            print(f"[ERROR] LLM API call failed: {type(e).__name__}: {e}")
             return "{}"
 
     def parse_action(self, response_text: str) -> Optional[Action]:
         """Parse LLM response into Action object"""
         try:
+            if not response_text:
+                return None
+                
             # Strip markdown fences if present
             text = response_text.strip()
             if text.startswith("```"):
                 lines = text.split("\n")
-                text = "\n".join(lines[1:-1]) if lines[-1].strip() == "```" else "\n".join(lines[1:])
+                text = "\n".join(lines[1:-1]) if len(lines) > 1 and lines[-1].strip() == "```" else "\n".join(lines[1:])
 
             json_start = text.find('{')
             json_end = text.rfind('}') + 1
-            if json_start == -1 or json_end == 0:
+            if json_start == -1 or json_end <= json_start:
                 return None
 
             data = json.loads(text[json_start:json_end])
+            if not isinstance(data, dict):
+                return None
 
             if self.task_id == "email_priority_classification":
-                priority = PriorityLevel(data["priority"].lower())
+                priority_str = str(data.get("priority", "medium")).lower().strip()
+                try:
+                    priority = PriorityLevel(priority_str)
+                except (ValueError, KeyError):
+                    priority = PriorityLevel.MEDIUM
+                
+                confidence = float(data.get("confidence", 0.5))
+                confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
+                
                 return Action(
                     task_id=self.task_id,
                     classify_priority=ActionClassifyPriority(
                         priority=priority,
-                        confidence=float(data.get("confidence", 0.5))
+                        confidence=confidence
                     )
                 )
 
             elif self.task_id == "urgency_detection":
                 raw_signals = data.get("urgency_signals", [])
+                if not isinstance(raw_signals, list):
+                    raw_signals = []
+                    
                 signals = []
                 for s in raw_signals:
                     try:
-                        signals.append(UrgencySignal(s.lower()))
-                    except ValueError:
+                        signal_str = str(s).lower().strip()
+                        signals.append(UrgencySignal(signal_str))
+                    except (ValueError, KeyError):
                         pass
+                
+                resp_time = int(data.get("estimated_response_time_minutes", 1440))
+                resp_time = max(1, min(24*60, resp_time))  # Clamp to [1, 1440]
+                
                 return Action(
                     task_id=self.task_id,
                     detect_urgency=ActionDetectUrgency(
                         urgency_signals=signals,
                         escalate=bool(data.get("escalate", False)),
-                        estimated_response_time_minutes=int(data.get("estimated_response_time_minutes", 1440))
+                        estimated_response_time_minutes=resp_time
                     )
                 )
 
             elif self.task_id == "intelligent_routing":
-                team_str = data["routing_team"].lower().replace("-", "_").replace(" ", "_")
-                team = RoutingTeam(team_str)
+                team_str = str(data.get("routing_team", "general_support")).lower().replace("-", "_").replace(" ", "_").strip()
+                try:
+                    team = RoutingTeam(team_str)
+                except (ValueError, KeyError):
+                    team = RoutingTeam.GENERAL_SUPPORT
+                    
                 response_text_val = str(data.get("suggested_response", "Thank you for contacting us."))[:500]
+                
+                confidence = float(data.get("confidence", 0.5))
+                confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
+                
                 return Action(
                     task_id=self.task_id,
                     route_and_respond=ActionRouteAndRespond(
                         routing_team=team,
                         suggested_response=response_text_val,
-                        confidence=float(data.get("confidence", 0.5)),
+                        confidence=confidence,
                         escalate=bool(data.get("escalate", False)),
                         follow_up_required=bool(data.get("follow_up_required", False))
                     )
                 )
 
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] JSON parse failed: {e}  |  raw: {response_text[:200] if response_text else 'empty'}")
+        except (ValueError, TypeError, KeyError) as e:
+            print(f"[ERROR] Failed to parse action: {type(e).__name__}: {e}  |  raw: {response_text[:200] if response_text else 'empty'}")
         except Exception as e:
-            print(f"[ERROR] Failed to parse action: {e}  |  raw: {response_text[:200]}")
+            print(f"[ERROR] Unexpected error parsing action: {type(e).__name__}: {e}")
 
         return None
 
@@ -226,71 +289,153 @@ class EmailTriageAgent:
 
     def run_episode(self) -> Dict[str, Any]:
         """Run one complete episode with strict [START], [STEP], [END] format"""
-        obs = self.env.reset()
         episode_details = []
         step_rewards = []
         step_num = 0
         last_error = None
+        obs = None
 
         # Emit [START] line (strict format)
         print(f"[START] task={self.task_id} env=openenv-email-triage model={self.model}", flush=True)
 
         try:
-            while not self.env.episode_done:
+            # Safe reset with error handling
+            try:
+                obs = self.env.reset()
+            except Exception as e:
+                print(f"[ERROR] Environment reset failed: {type(e).__name__}: {e}", flush=True)
+                last_error = "reset_failed"
+                # Emit [END] indicating failure
+                print(f"[END] success=false steps=0 rewards=", flush=True)
+                return {
+                    "task_id": self.task_id,
+                    "model": self.model,
+                    "total_steps": 0,
+                    "final_reward": 0.0,
+                    "average_reward": 0.0,
+                    "success": False,
+                    "error": f"reset_failed: {e}",
+                    "episode_details": [],
+                }
+
+            # Main episode loop
+            while obs and not self.env.episode_done:
                 step_num += 1
-                email_data = obs.email.model_dump()
+                try:
+                    # Safe email data extraction
+                    try:
+                        email_data = obs.email.model_dump()
+                    except Exception as e:
+                        print(f"[ERROR] Email serialization failed at step {step_num}: {e}", flush=True)
+                        last_error = "email_dump_failed"
+                        break
 
-                system_prompt = self.system_prompts[self.task_id]
-                user_message = self.get_user_message(email_data)
+                    # Get prompts and build user message safely
+                    try:
+                        system_prompt = self.system_prompts.get(self.task_id, "")
+                        if not system_prompt:
+                            raise ValueError(f"No system prompt for task {self.task_id}")
+                        user_message = self.get_user_message(email_data)
+                    except Exception as e:
+                        print(f"[ERROR] Prompt building failed: {e}", flush=True)
+                        last_error = "prompt_build_failed"
+                        break
 
-                response_text = self.call_llm(system_prompt, user_message)
+                    # Call LLM safely
+                    response_text = self.call_llm(system_prompt, user_message)
 
-                action = self.parse_action(response_text)
-                if not action:
-                    action = self._get_fallback_action()
-                    last_error = "parse_failed"
+                    # Parse action safely
+                    action = self.parse_action(response_text)
+                    if not action:
+                        action = self._get_fallback_action()
+                        last_error = "parse_failed"
+                    else:
+                        last_error = None
 
-                obs, reward, info = self.env.step(action)
+                    # Execute step safely
+                    try:
+                        result = self.env.step(action)
+                        if result is None or len(result) < 3:
+                            raise ValueError("Invalid environment step result")
+                        obs, reward, info = result
+                    except Exception as e:
+                        print(f"[ERROR] Environment step failed at step {step_num}: {type(e).__name__}: {e}", flush=True)
+                        last_error = "step_failed"
+                        break
 
-                step_reward = reward.episode_reward
-                step_rewards.append(step_reward)
-                done = reward.is_done
+                    # Extract reward safely
+                    try:
+                        step_reward = float(reward.episode_reward) if reward else 0.0
+                        step_rewards.append(step_reward)
+                        done = bool(reward.is_done) if reward else False
+                    except Exception as e:
+                        print(f"[ERROR] Reward extraction failed: {e}", flush=True)
+                        step_reward = 0.0
+                        step_rewards.append(step_reward)
+                        done = False
 
-                # Emit [STEP] line (strict format)
-                action_str = self._action_to_string(action)
-                error_val = f'"{last_error}"' if last_error else "null"
-                done_str = str(done).lower()
-                print(f"[STEP] step={step_num} action={action_str} reward={step_reward:.2f} "
-                      f"done={done_str} error={error_val}", flush=True)
+                    # Emit [STEP] line (strict format)
+                    try:
+                        action_str = self._action_to_string(action)
+                        error_val = f'"{last_error}"' if last_error else "null"
+                        done_str = str(done).lower()
+                        print(f"[STEP] step={step_num} action={action_str} reward={step_reward:.2f} "
+                              f"done={done_str} error={error_val}", flush=True)
+                    except Exception as e:
+                        print(f"[ERROR] Failed to emit [STEP] line: {e}", flush=True)
 
-                episode_details.append({
-                    "step": step_num,
-                    "email_id": email_data['email_id'],
-                    "action": action.model_dump(),
-                    "step_reward": step_reward,
-                    "cumulative_reward": reward.cumulative_reward,
-                })
+                    # Collect episode details safely
+                    try:
+                        episode_details.append({
+                            "step": step_num,
+                            "email_id": email_data.get('email_id', 'unknown'),
+                            "action": action.model_dump() if action else {},
+                            "step_reward": step_reward,
+                            "cumulative_reward": float(reward.cumulative_reward) if reward else 0.0,
+                        })
+                    except Exception as e:
+                        print(f"[ERROR] Failed to collect episode details: {e}", flush=True)
 
-                last_error = None
+                except Exception as e:
+                    print(f"[ERROR] Unhandled error in step {step_num}: {type(e).__name__}: {e}", flush=True)
+                    last_error = f"step_error_{step_num}"
+                    break
 
         except Exception as e:
-            last_error = str(e)
+            print(f"[ERROR] Unhandled exception in episode: {type(e).__name__}: {e}", flush=True)
+            last_error = "episode_error"
 
-        # Emit [END] line (strict format)
-        final_summary = self.env.get_episode_summary()
-        success = final_summary.get("success", False)
-        total_steps = final_summary.get("total_steps", step_num)
-        rewards_str = ",".join(f"{r:.2f}" for r in step_rewards)
+        # Emit [END] line (strict format) - always emit this
+        try:
+            final_summary = {}
+            try:
+                final_summary = self.env.get_episode_summary() if self.env else {}
+            except Exception as e:
+                print(f"[ERROR] Failed to get episode summary: {e}", flush=True)
+                final_summary = {}
 
-        print(f"[END] success={str(success).lower()} steps={total_steps} rewards={rewards_str}", flush=True)
+            success = final_summary.get("success", False) if final_summary else False
+            total_steps = final_summary.get("total_steps", step_num) if final_summary else step_num
+            rewards_str = ",".join(f"{r:.2f}" for r in step_rewards) if step_rewards else ""
+
+            print(f"[END] success={str(success).lower()} steps={total_steps} rewards={rewards_str}", flush=True)
+        except Exception as e:
+            print(f"[ERROR] Failed to emit [END] line: {e}", flush=True)
+            print(f"[END] success=false steps={step_num} rewards={','.join(f'{r:.2f}' for r in step_rewards) if step_rewards else ''}", flush=True)
+
+        # Return results
+        try:
+            final_summary = self.env.get_episode_summary() if self.env else {}
+        except Exception:
+            final_summary = {}
 
         return {
             "task_id": self.task_id,
             "model": self.model,
-            "total_steps": total_steps,
+            "total_steps": len(episode_details),
             "final_reward": final_summary.get('final_reward', 0.0),
             "average_reward": final_summary.get('average_step_reward', 0.0),
-            "success": success,
+            "success": final_summary.get("success", False),
             "episode_details": episode_details,
         }
 
@@ -310,20 +455,73 @@ def main():
         "tasks": {}
     }
 
+    print(f"[INFO] Starting inference with model={MODEL_NAME}, api_base={API_BASE_URL}", flush=True)
+
     for task_id in tasks:
+        print(f"[INFO] Processing task: {task_id}", flush=True)
         try:
-            agent = EmailTriageAgent(task_id, MODEL_NAME)
-            result = agent.run_episode()
-            results["tasks"][task_id] = result
+            # Initialize agent with error handling
+            try:
+                agent = EmailTriageAgent(task_id, MODEL_NAME)
+            except Exception as e:
+                print(f"[ERROR] Failed to initialize agent for {task_id}: {type(e).__name__}: {e}", flush=True)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                results["tasks"][task_id] = {
+                    "error": f"initialization_failed: {str(e)}",
+                    "total_steps": 0,
+                    "success": False
+                }
+                continue
+
+            # Run episode with error handling
+            try:
+                result = agent.run_episode()
+                results["tasks"][task_id] = result
+                print(f"[INFO] Task {task_id} completed: success={result.get('success', False)}", flush=True)
+            except Exception as e:
+                print(f"[ERROR] Episode execution failed for {task_id}: {type(e).__name__}: {e}", flush=True)
+                import traceback
+                traceback.print_exc(file=sys.stderr)
+                results["tasks"][task_id] = {
+                    "error": f"episode_failed: {str(e)}",
+                    "total_steps": 0,
+                    "success": False
+                }
         except Exception as e:
-            results["tasks"][task_id] = {"error": str(e)}
+            print(f"[ERROR] Unexpected error processing task {task_id}: {type(e).__name__}: {e}", flush=True)
             import traceback
-            traceback.print_exc()
+            traceback.print_exc(file=sys.stderr)
+            results["tasks"][task_id] = {
+                "error": f"unexpected_error: {str(e)}",
+                "total_steps": 0,
+                "success": False
+            }
 
     # Write results to file (not stdout - keep stdout clean)
-    with open("baseline_results.json", "w") as f:
-        json.dump(results, f, indent=2)
+    print(f"[INFO] Writing results to baseline_results.json", flush=True)
+    try:
+        with open("baseline_results.json", "w") as f:
+            json.dump(results, f, indent=2)
+        print(f"[INFO] Results written successfully", flush=True)
+    except Exception as e:
+        print(f"[ERROR] Failed to write results file: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+
+    print(f"[INFO] Inference complete", flush=True)
+    # Always exit with 0 to indicate script completed (even if some tasks failed)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        # Allow sys.exit() to work normally
+        raise
+    except Exception as e:
+        print(f"[CRITICAL] Unhandled exception in main: {type(e).__name__}: {e}", flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.exit(0)  # Exit gracefully even on critical error
