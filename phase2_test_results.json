@@ -1,0 +1,236 @@
+{
+  "timestamp": "2026-04-08T21:43:54.251134",
+  "total_tests": 38,
+  "passed": 34,
+  "failed": 4,
+  "tests": [
+    {
+      "name": "Import root app.py",
+      "passed": true,
+      "message": "Successfully imported app from root",
+      "details": "app object exists: True"
+    },
+    {
+      "name": "Import server.app.app",
+      "passed": true,
+      "message": "Successfully imported FastAPI app from server.app",
+      "details": "app is FastAPI instance: FastAPI"
+    },
+    {
+      "name": "app.py imports from server.app correctly",
+      "passed": true,
+      "message": "root app.py should import from server.app",
+      "details": "Same object: True"
+    },
+    {
+      "name": "FastAPI app imported",
+      "passed": true,
+      "message": "server.app.app exists",
+      "details": "Type: FastAPI"
+    },
+    {
+      "name": "Endpoint exists: /health",
+      "passed": true,
+      "message": "Route /health is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Endpoint exists: /reset",
+      "passed": true,
+      "message": "Route /reset is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Endpoint exists: /step",
+      "passed": true,
+      "message": "Route /step is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Endpoint exists: /state",
+      "passed": true,
+      "message": "Route /state is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Endpoint exists: /tasks",
+      "passed": true,
+      "message": "Route /tasks is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Endpoint exists: /episode-summary",
+      "passed": true,
+      "message": "Route /episode-summary is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Endpoint exists: /",
+      "passed": true,
+      "message": "Route / is registered",
+      "details": "Available routes: ['/openapi.json', '/docs', '/docs/oauth2-redirect', '/redoc', '/health', '/reset', '/step', '/state', '/episode-summary', '/tasks', '/']"
+    },
+    {
+      "name": "Broad Exception handling in call_llm()",
+      "passed": true,
+      "message": "Uses `except Exception` to catch all OpenAI v1 exceptions",
+      "details": "APIConnectionError, APITimeoutError, AuthenticationError, etc. are subclasses of Exception"
+    },
+    {
+      "name": "Exception type logging",
+      "passed": true,
+      "message": "Logs exception module and type for debugging",
+      "details": "Helps identify which OpenAI exception was raised"
+    },
+    {
+      "name": "Exception fallback return",
+      "passed": false,
+      "message": "Returns safe default {} on API failure",
+      "details": "Prevents unhandled exceptions from crashing the script"
+    },
+    {
+      "name": "[START] line format",
+      "passed": true,
+      "message": "Emits [START] task=<task> env=<env> model=<model>",
+      "details": "Required by validator for evaluation"
+    },
+    {
+      "name": "[STEP] line format",
+      "passed": true,
+      "message": "Emits [STEP] with step, action, reward, done, error fields",
+      "details": "Must include score field (new requirement)"
+    },
+    {
+      "name": "[END] line includes score field (CRITICAL)",
+      "passed": true,
+      "message": "Emits [END] success=<bool> steps=<n> score=<score> rewards=<...>",
+      "details": "score field is mandatory in Phase 2"
+    },
+    {
+      "name": "Reward formatting (2 decimals)",
+      "passed": true,
+      "message": "Formats rewards to 2 decimal places (0.00 format)",
+      "details": "Validator expects this exact format"
+    },
+    {
+      "name": "Reset wrapped in try/except",
+      "passed": true,
+      "message": "Safely catches reset() exceptions",
+      "details": ""
+    },
+    {
+      "name": "[END] emitted on reset failure with score=0.00",
+      "passed": true,
+      "message": "Emits [END] success=false steps=0 score=0.00 rewards=",
+      "details": "Ensures validator can parse output even on failure"
+    },
+    {
+      "name": "Fallback [STEP] line on inner exceptions",
+      "passed": true,
+      "message": "Emits minimal valid [STEP] line when step loop fails",
+      "details": "Prevents output parsing from breaking on incomplete logs"
+    },
+    {
+      "name": "Fallback [STEP] emitted before break",
+      "passed": true,
+      "message": "Ensures [STEP] is in log stream before exiting loop",
+      "details": "Critical for validator output parsing"
+    },
+    {
+      "name": "No parent directory paths in COPY",
+      "passed": true,
+      "message": "Uses relative paths within build context",
+      "details": "Docker COPY cannot reference parent directories"
+    },
+    {
+      "name": "Correct CMD module path (server.app:app)",
+      "passed": true,
+      "message": "CMD uses server.app:app instead of server:app",
+      "details": "Matches the package structure"
+    },
+    {
+      "name": "HF Spaces app_file: app.py",
+      "passed": true,
+      "message": "README.md header sets app_file: app.py",
+      "details": ""
+    },
+    {
+      "name": "HF Spaces app_port: 7860",
+      "passed": true,
+      "message": "README.md header sets app_port: 7860",
+      "details": ""
+    },
+    {
+      "name": "Environment variable: MODEL_NAME",
+      "passed": false,
+      "message": "MODEL_NAME not set (use defaults or set manually)",
+      "details": "These are used by inference.py"
+    },
+    {
+      "name": "Environment variable: API_BASE_URL",
+      "passed": false,
+      "message": "API_BASE_URL not set (use defaults or set manually)",
+      "details": "These are used by inference.py"
+    },
+    {
+      "name": "Environment variable: HF_TOKEN",
+      "passed": false,
+      "message": "HF_TOKEN not set (use defaults or set manually)",
+      "details": "These are used by inference.py"
+    },
+    {
+      "name": "Uses OpenAI Client",
+      "passed": true,
+      "message": "inference.py imports OpenAI client",
+      "details": "Required for Phase 2 evaluation"
+    },
+    {
+      "name": "Reads credentials from environment",
+      "passed": true,
+      "message": "Uses os.getenv() for API_BASE_URL, MODEL_NAME, HF_TOKEN",
+      "details": "Phase 2 evaluator will inject these"
+    },
+    {
+      "name": "Task exists: email_priority_classification",
+      "passed": true,
+      "message": "Initialized email_priority_classification environment",
+      "details": ""
+    },
+    {
+      "name": "Task exists: urgency_detection",
+      "passed": true,
+      "message": "Initialized urgency_detection environment",
+      "details": ""
+    },
+    {
+      "name": "Task exists: intelligent_routing",
+      "passed": true,
+      "message": "Initialized intelligent_routing environment",
+      "details": ""
+    },
+    {
+      "name": "Score clamping to [0.0, 1.0]",
+      "passed": true,
+      "message": "Uses min/max to constrain scores to valid range",
+      "details": "Prevents invalid scores from breaking validator"
+    },
+    {
+      "name": "Score calculation present",
+      "passed": true,
+      "message": "Calculates normalized score from rewards",
+      "details": ""
+    },
+    {
+      "name": "Step limit defined",
+      "passed": true,
+      "message": "inference.py should have bounded episode length",
+      "details": "Needed for <20min runtime requirement"
+    },
+    {
+      "name": "Timeout handling present",
+      "passed": true,
+      "message": "Handles long-running operations",
+      "details": ""
+    }
+  ]
+}
