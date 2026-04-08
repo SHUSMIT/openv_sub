@@ -189,6 +189,10 @@ async def root():
     }
 
 
-if __name__ == "__main__":
-    # Always run on 7860 to match HF Spaces
+def main():
+    """Main entry point for running the server"""
     uvicorn.run(app, host="0.0.0.0", port=7860)
+
+
+if __name__ == "__main__":
+    main()
