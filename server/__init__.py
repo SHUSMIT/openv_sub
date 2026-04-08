@@ -1,4 +1,5 @@
 # Server package for OpenEnv Email Triage
-from server.app import app
+# Don't import app here to avoid circular imports
+# Import directly from server.app when needed
 
-__all__ = ["app"]
+__all__ = []
