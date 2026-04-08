@@ -10,6 +10,7 @@ from models import (
     Email, Action, PriorityLevel, RoutingTeam, UrgencySignal,
     ActionClassifyPriority, ActionDetectUrgency, ActionRouteAndRespond
 )
+from task_graders import normalize_score
 
 try:
     from anthropic import Anthropic
@@ -172,14 +173,14 @@ Provide JSON:
     def grade_priority(self, email: Email, action: Action) -> Tuple[float, Dict[str, Any]]:
         """Grade priority classification with LLM fallback"""
         if not action.classify_priority:
-            return -0.25, {"error": "No priority action provided", "used_llm": False}
+            return normalize_score(-0.25), {"error": "No priority action provided", "used_llm": False}
 
         llm_eval = self._get_llm_evaluation(email, action.classify_priority, "priority_classification")
         
         if llm_eval:
             quality = llm_eval.get("quality_score", 0.5)
             bonus = llm_eval.get("bonus_points", 0.0)
-            final_score = min(1.0, quality + bonus)
+            final_score = normalize_score(min(1.0, quality + bonus))
             return final_score, {**llm_eval, "used_llm": True, "method": "dynamic_llm"}
 
         # Fallback to rule-based
@@ -188,13 +189,13 @@ Provide JSON:
     def grade_urgency(self, email: Email, action: Action) -> Tuple[float, Dict[str, Any]]:
         """Grade urgency detection with LLM fallback"""
         if not action.detect_urgency:
-            return -0.25, {"error": "No urgency action provided", "used_llm": False}
+            return normalize_score(-0.25), {"error": "No urgency action provided", "used_llm": False}
 
         llm_eval = self._get_llm_evaluation(email, action.detect_urgency, "urgency_detection")
         
         if llm_eval:
             overall = llm_eval.get("overall_quality", 0.5)
-            return overall, {**llm_eval, "used_llm": True, "method": "dynamic_llm"}
+            return normalize_score(overall), {**llm_eval, "used_llm": True, "method": "dynamic_llm"}
 
         # Fallback
         return self._rule_based_urgency_grade(email, action.detect_urgency)
@@ -202,13 +203,13 @@ Provide JSON:
     def grade_routing(self, email: Email, action: Action) -> Tuple[float, Dict[str, Any]]:
         """Grade routing decision with LLM fallback"""
         if not action.route_and_respond:
-            return -0.25, {"error": "No routing action provided", "used_llm": False}
+            return normalize_score(-0.25), {"error": "No routing action provided", "used_llm": False}
 
         llm_eval = self._get_llm_evaluation(email, action.route_and_respond, "routing")
         
         if llm_eval:
             overall = llm_eval.get("overall_score", 0.5)
-            return overall, {**llm_eval, "used_llm": True, "method": "dynamic_llm"}
+            return normalize_score(overall), {**llm_eval, "used_llm": True, "method": "dynamic_llm"}
 
         # Fallback
         return self._rule_based_routing_grade(email, action.route_and_respond)
@@ -249,7 +250,7 @@ Provide JSON:
         if action.confidence < 0.5:
             score *= 0.7
         
-        return max(0.0, score), {"method": "rule_based", "used_llm": False, "score": score}
+        return normalize_score(score), {"method": "rule_based", "used_llm": False, "score": score}
 
     def _rule_based_urgency_grade(self, email: Email, action: ActionDetectUrgency) -> Tuple[float, Dict[str, Any]]:
         """Fallback rule-based urgency grading"""
@@ -271,7 +272,7 @@ Provide JSON:
             else:
                 score = 0.5
         
-        return score, {"method": "rule_based", "used_llm": False}
+        return normalize_score(score), {"method": "rule_based", "used_llm": False}
 
     def _rule_based_routing_grade(self, email: Email, action: ActionRouteAndRespond) -> Tuple[float, Dict[str, Any]]:
         """Fallback rule-based routing grading"""
@@ -287,4 +288,4 @@ Provide JSON:
         if len(action.suggested_response) > 50 and len(action.suggested_response) < 500:
             score += 0.1
         
-        return min(1.0, score), {"method": "rule_based", "used_llm": False, "score": score}
+        return normalize_score(score), {"method": "rule_based", "used_llm": False, "score": score}

@@ -251,7 +251,8 @@ class EmailTriageEnv:
             elif self.task_id == "intelligent_routing":
                 return self.routing_grader.grade(email, action)
             else:
-                return 0.0, {"error": "Unknown task"}
+                from task_graders import normalize_score
+                return normalize_score(0.5), {"error": "Unknown task"}
         
         # Use dynamic LLM grader
         try:
@@ -273,7 +274,8 @@ class EmailTriageEnv:
             elif self.task_id == "intelligent_routing":
                 return self.routing_grader.grade(email, action)
             else:
-                return 0.0, {"error": "Unknown task"}
+                from task_graders import normalize_score
+                return normalize_score(0.5), {"error": "Unknown task"}
 
     def step(self, action: Action) -> Tuple[Observation, Reward, Dict[str, Any]]:
         """Process agent action and return new observation, reward, and info."""
