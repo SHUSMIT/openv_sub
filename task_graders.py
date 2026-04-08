@@ -9,6 +9,20 @@ from models import (
 )
 
 
+def normalize_score(score: float) -> float:
+    """
+    Normalize score to be strictly between 0 and 1 (exclusive boundaries).
+    Validator rejects exactly 0.0 or 1.0, requires 0 < score < 1.
+    Maps expected range [-0.5, 1.0] to (0.01, 0.99).
+    """
+    # First clamp to [-0.5, 1.0]
+    clamped = max(-0.5, min(1.0, score))
+    # Linear map from [-0.5, 1.0] to (0.01, 0.99)
+    # Range [-0.5, 1.0] is 1.5 units, map to [0.01, 0.99] (0.98 units)
+    normalized = 0.01 + (clamped - (-0.5)) / 1.5 * 0.98
+    return max(0.01, min(0.99, normalized))
+
+
 class EmailPriorityGrader:
     """
     Grader for Task 1: Email Priority Classification
@@ -33,7 +47,7 @@ class EmailPriorityGrader:
 
     def grade(self, email: Email, action: Action) -> Tuple[float, Dict[str, Any]]:
         if not action.classify_priority:
-            return -0.25, {"error": "No classification action provided"}
+            return normalize_score(-0.25), {"error": "No classification action provided"}
 
         ground_truth = self.priority_ground_truth.get(email.email_id, PriorityLevel.MEDIUM)
         predicted = action.classify_priority.priority
@@ -58,6 +72,8 @@ class EmailPriorityGrader:
                 reward = 0.0
 
             reward = max(-0.25, reward - (1 - action.classify_priority.confidence) * 0.2)
+            # Normalize to (0, 1) strictly for validator
+            reward = normalize_score(reward)
 
             return reward, {
                 "ground_truth": ground_truth,
@@ -66,7 +82,7 @@ class EmailPriorityGrader:
                 "confidence": action.classify_priority.confidence,
             }
         except (ValueError, AttributeError) as e:
-            return -0.25, {"error": str(e)}
+            return normalize_score(-0.25), {"error": str(e)}
 
 
 class UrgencyDetectionGrader:
@@ -96,7 +112,7 @@ class UrgencyDetectionGrader:
 
     def grade(self, email: Email, action: Action) -> Tuple[float, Dict[str, Any]]:
         if not action.detect_urgency:
-            return -0.25, {"error": "No urgency detection action provided"}
+            return normalize_score(-0.25), {"error": "No urgency detection action provided"}
 
         ground_truth_signals = self.urgency_ground_truth.get(email.email_id, [UrgencySignal.NONE])
         predicted_signals = action.detect_urgency.urgency_signals or [UrgencySignal.NONE]
@@ -148,7 +164,7 @@ class UrgencyDetectionGrader:
         details["false_positives"] = false_positives
         details["escalation_correct"] = action.detect_urgency.escalate == should_escalate
 
-        return max(-0.5, min(1.0, reward)), details
+        return normalize_score(reward), details
 
 
 class IntelligentRoutingGrader:
@@ -235,7 +251,7 @@ class IntelligentRoutingGrader:
 
     def grade(self, email: Email, action: Action) -> Tuple[float, Dict[str, Any]]:
         if not action.route_and_respond:
-            return -0.5, {"error": "No routing action provided"}
+            return normalize_score(-0.5), {"error": "No routing action provided"}
 
         ground_truth = self.routing_ground_truth.get(
             email.email_id, {
@@ -297,6 +313,6 @@ class IntelligentRoutingGrader:
 
         details["response_length"] = response_len
         details["ground_truth"] = ground_truth
-        details["final_score"] = max(-0.5, min(1.0, reward))
+        details["final_score"] = normalize_score(reward)
 
-        return max(-0.5, min(1.0, reward)), details
+        return normalize_score(reward), details
