@@ -13,7 +13,7 @@ Required Environment Variables:
 The script emits exactly three line types to stdout:
   [START] task=<task_name> env=openenv-email-triage model=<model_name>
   [STEP]  step=<n> action=<action_str> reward=<0.00> done=<true|false> error=<msg|null>
-  [END]   success=<true|false> steps=<n> rewards=<r1,r2,...,rn>
+  [END]   success=<true|false> steps=<n> score=<score> rewards=<r1,r2,...,rn>
 """
 
 import os
@@ -33,7 +33,6 @@ from models import (
 )
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-# Required by competition evaluator:
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
 API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
@@ -47,15 +46,11 @@ def _init_client():
     global client
     if client is not None:
         return client
-    
+
     if not API_KEY:
-        print("[ERROR] HF_TOKEN or OPENAI_API_KEY environment variable must be set")
-        print("\nUsage (Competition):")
-        print("  export HF_TOKEN='hf_...' && export MODEL_NAME='gpt-4' && python inference.py")
-        print("\nUsage (Local Testing):")
-        print("  export OPENAI_API_KEY='sk-...' && export MODEL_NAME='gpt-4' && python inference.py")
+        print("[ERROR] HF_TOKEN or OPENAI_API_KEY environment variable must be set", flush=True)
         raise RuntimeError("API key not configured")
-    
+
     try:
         client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
         return client
@@ -115,9 +110,8 @@ class EmailTriageAgent:
     def call_llm(self, system_prompt: str, user_message: str) -> str:
         """Call the LLM via OpenAI-compatible chat completions API"""
         try:
-            # Initialize client on first use
             llm_client = _init_client()
-            
+
             response = llm_client.chat.completions.create(
                 model=self.model,
                 max_tokens=500,
@@ -129,33 +123,35 @@ class EmailTriageAgent:
             )
             content = response.choices[0].message.content if response.choices else None
             return content or "{}"
-        except ConnectionError as e:
-            print(f"[ERROR] Network connection failed: {e}")
-            return "{}"
-        except TimeoutError as e:
-            print(f"[ERROR] API request timeout: {e}")
-            return "{}"
-        except ValueError as e:
-            print(f"[ERROR] Invalid parameter: {e}")
-            return "{}"
-        except RuntimeError as e:
-            print(f"[ERROR] Configuration error: {e}")
-            return "{}"
+
+        # openai v1 specific exceptions
         except Exception as e:
-            print(f"[ERROR] LLM API call failed: {type(e).__name__}: {e}")
+            # Catch ALL exception types from openai v1:
+            # openai.APIConnectionError, openai.APITimeoutError,
+            # openai.AuthenticationError, openai.RateLimitError,
+            # openai.APIStatusError, openai.BadRequestError, etc.
+            err_type = type(e).__name__
+            err_module = type(e).__module__
+            print(f"[ERROR] LLM API call failed ({err_module}.{err_type}): {e}", flush=True)
             return "{}"
 
     def parse_action(self, response_text: str) -> Optional[Action]:
         """Parse LLM response into Action object"""
         try:
-            if not response_text:
+            if not response_text or not response_text.strip():
                 return None
-                
+
             # Strip markdown fences if present
             text = response_text.strip()
             if text.startswith("```"):
                 lines = text.split("\n")
-                text = "\n".join(lines[1:-1]) if len(lines) > 1 and lines[-1].strip() == "```" else "\n".join(lines[1:])
+                # Find the closing fence
+                end_idx = len(lines)
+                for i in range(1, len(lines)):
+                    if lines[i].strip() == "```":
+                        end_idx = i
+                        break
+                text = "\n".join(lines[1:end_idx])
 
             json_start = text.find('{')
             json_end = text.rfind('}') + 1
@@ -172,10 +168,10 @@ class EmailTriageAgent:
                     priority = PriorityLevel(priority_str)
                 except (ValueError, KeyError):
                     priority = PriorityLevel.MEDIUM
-                
+
                 confidence = float(data.get("confidence", 0.5))
-                confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
-                
+                confidence = max(0.0, min(1.0, confidence))
+
                 return Action(
                     task_id=self.task_id,
                     classify_priority=ActionClassifyPriority(
@@ -188,7 +184,7 @@ class EmailTriageAgent:
                 raw_signals = data.get("urgency_signals", [])
                 if not isinstance(raw_signals, list):
                     raw_signals = []
-                    
+
                 signals = []
                 for s in raw_signals:
                     try:
@@ -196,10 +192,10 @@ class EmailTriageAgent:
                         signals.append(UrgencySignal(signal_str))
                     except (ValueError, KeyError):
                         pass
-                
+
                 resp_time = int(data.get("estimated_response_time_minutes", 1440))
-                resp_time = max(1, min(24*60, resp_time))  # Clamp to [1, 1440]
-                
+                resp_time = max(1, min(24 * 60, resp_time))
+
                 return Action(
                     task_id=self.task_id,
                     detect_urgency=ActionDetectUrgency(
@@ -215,12 +211,12 @@ class EmailTriageAgent:
                     team = RoutingTeam(team_str)
                 except (ValueError, KeyError):
                     team = RoutingTeam.GENERAL_SUPPORT
-                    
+
                 response_text_val = str(data.get("suggested_response", "Thank you for contacting us."))[:500]
-                
+
                 confidence = float(data.get("confidence", 0.5))
-                confidence = max(0.0, min(1.0, confidence))  # Clamp to [0, 1]
-                
+                confidence = max(0.0, min(1.0, confidence))
+
                 return Action(
                     task_id=self.task_id,
                     route_and_respond=ActionRouteAndRespond(
@@ -233,11 +229,11 @@ class EmailTriageAgent:
                 )
 
         except json.JSONDecodeError as e:
-            print(f"[ERROR] JSON parse failed: {e}  |  raw: {response_text[:200] if response_text else 'empty'}")
+            print(f"[ERROR] JSON parse failed: {e}  |  raw: {str(response_text)[:200]}", flush=True)
         except (ValueError, TypeError, KeyError) as e:
-            print(f"[ERROR] Failed to parse action: {type(e).__name__}: {e}  |  raw: {response_text[:200] if response_text else 'empty'}")
+            print(f"[ERROR] Failed to parse action: {type(e).__name__}: {e}", flush=True)
         except Exception as e:
-            print(f"[ERROR] Unexpected error parsing action: {type(e).__name__}: {e}")
+            print(f"[ERROR] Unexpected error parsing action: {type(e).__name__}: {e}", flush=True)
 
         return None
 
@@ -273,18 +269,21 @@ class EmailTriageAgent:
             )
 
     def _action_to_string(self, action: Action) -> str:
-        """Convert Action object to concise string representation for logging"""
-        if action.classify_priority:
-            return (f"classify_priority(priority={action.classify_priority.priority},"
-                   f"confidence={action.classify_priority.confidence:.2f})")
-        elif action.detect_urgency:
-            signals = ",".join([s.value for s in action.detect_urgency.urgency_signals])
-            return (f"detect_urgency(signals=[{signals}],"
-                   f"escalate={str(action.detect_urgency.escalate).lower()})")
-        elif action.route_and_respond:
-            resp_preview = action.route_and_respond.suggested_response[:30].replace("\n", " ")
-            return (f"route_and_respond(team={action.route_and_respond.routing_team},"
-                   f"response='{resp_preview}...')")
+        """Convert Action object to concise string for logging"""
+        try:
+            if action.classify_priority:
+                return (f"classify_priority(priority={action.classify_priority.priority},"
+                        f"confidence={action.classify_priority.confidence:.2f})")
+            elif action.detect_urgency:
+                signals = ",".join([s.value for s in action.detect_urgency.urgency_signals])
+                return (f"detect_urgency(signals=[{signals}],"
+                        f"escalate={str(action.detect_urgency.escalate).lower()})")
+            elif action.route_and_respond:
+                resp_preview = action.route_and_respond.suggested_response[:30].replace("\n", " ")
+                return (f"route_and_respond(team={action.route_and_respond.routing_team},"
+                        f"response='{resp_preview}...')")
+        except Exception as e:
+            print(f"[ERROR] Failed to stringify action: {e}", flush=True)
         return "unknown_action"
 
     def run_episode(self) -> Dict[str, Any]:
@@ -304,9 +303,8 @@ class EmailTriageAgent:
                 obs = self.env.reset()
             except Exception as e:
                 print(f"[ERROR] Environment reset failed: {type(e).__name__}: {e}", flush=True)
-                last_error = "reset_failed"
-                # Emit [END] indicating failure
-                print(f"[END] success=false steps=0 rewards=", flush=True)
+                # FIXED: include score= field in all [END] lines
+                print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
                 return {
                     "task_id": self.task_id,
                     "model": self.model,
@@ -319,7 +317,7 @@ class EmailTriageAgent:
                 }
 
             # Main episode loop
-            while obs and not self.env.episode_done:
+            while obs is not None and not self.env.episode_done:
                 step_num += 1
                 try:
                     # Safe email data extraction
@@ -330,7 +328,7 @@ class EmailTriageAgent:
                         last_error = "email_dump_failed"
                         break
 
-                    # Get prompts and build user message safely
+                    # Get prompts and build user message
                     try:
                         system_prompt = self.system_prompts.get(self.task_id, "")
                         if not system_prompt:
@@ -341,10 +339,10 @@ class EmailTriageAgent:
                         last_error = "prompt_build_failed"
                         break
 
-                    # Call LLM safely
+                    # Call LLM (all exceptions caught inside call_llm)
                     response_text = self.call_llm(system_prompt, user_message)
 
-                    # Parse action safely
+                    # Parse action
                     action = self.parse_action(response_text)
                     if not action:
                         action = self._get_fallback_action()
@@ -352,7 +350,7 @@ class EmailTriageAgent:
                     else:
                         last_error = None
 
-                    # Execute step safely
+                    # Execute step
                     try:
                         result = self.env.step(action)
                         if result is None or len(result) < 3:
@@ -383,8 +381,10 @@ class EmailTriageAgent:
                               f"done={done_str} error={error_val}", flush=True)
                     except Exception as e:
                         print(f"[ERROR] Failed to emit [STEP] line: {e}", flush=True)
+                        # Still emit a minimal valid STEP line
+                        print(f"[STEP] step={step_num} action=unknown reward=0.00 done=false error=\"step_log_error\"", flush=True)
 
-                    # Collect episode details safely
+                    # Collect episode details
                     try:
                         episode_details.append({
                             "step": step_num,
@@ -396,16 +396,21 @@ class EmailTriageAgent:
                     except Exception as e:
                         print(f"[ERROR] Failed to collect episode details: {e}", flush=True)
 
+                    if done:
+                        break
+
                 except Exception as e:
                     print(f"[ERROR] Unhandled error in step {step_num}: {type(e).__name__}: {e}", flush=True)
                     last_error = f"step_error_{step_num}"
+                    # Emit a fallback STEP line so output parsing doesn't break
+                    print(f"[STEP] step={step_num} action=fallback reward=0.00 done=false error=\"{last_error}\"", flush=True)
                     break
 
         except Exception as e:
             print(f"[ERROR] Unhandled exception in episode: {type(e).__name__}: {e}", flush=True)
             last_error = "episode_error"
 
-        # Emit [END] line (strict format) - always emit this
+        # Emit [END] line — ALWAYS emitted, ALWAYS includes score=
         try:
             final_summary = {}
             try:
@@ -416,21 +421,24 @@ class EmailTriageAgent:
 
             success = final_summary.get("success", False) if final_summary else False
             total_steps = final_summary.get("total_steps", step_num) if final_summary else step_num
-            final_reward = final_summary.get("final_reward", 0.0) if final_summary else sum(step_rewards) if step_rewards else 0.0
-            
-            # Calculate score (normalize to 0.0-1.0 range)
-            # Assuming max cumulative reward is around 10.0 for the episode
+            final_reward = (
+                final_summary.get("final_reward", 0.0)
+                if final_summary
+                else (sum(step_rewards) if step_rewards else 0.0)
+            )
+
+            # Normalize score to [0, 1]
             score = min(max(float(final_reward) / 10.0, 0.0), 1.0) if final_reward else 0.0
-            
             rewards_str = ",".join(f"{r:.2f}" for r in step_rewards) if step_rewards else ""
 
             print(f"[END] success={str(success).lower()} steps={total_steps} score={score:.2f} rewards={rewards_str}", flush=True)
         except Exception as e:
             print(f"[ERROR] Failed to emit [END] line: {e}", flush=True)
-            rewards_str = ','.join(f'{r:.2f}' for r in step_rewards) if step_rewards else ''
+            # Last-resort fallback — always valid
+            rewards_str = ",".join(f"{r:.2f}" for r in step_rewards) if step_rewards else ""
             print(f"[END] success=false steps={step_num} score=0.00 rewards={rewards_str}", flush=True)
 
-        # Return results
+        # Return results dict
         try:
             final_summary = self.env.get_episode_summary() if self.env else {}
         except Exception:
@@ -467,7 +475,6 @@ def main():
     for task_id in tasks:
         print(f"[INFO] Processing task: {task_id}", flush=True)
         try:
-            # Initialize agent with error handling
             try:
                 agent = EmailTriageAgent(task_id, MODEL_NAME)
             except Exception as e:
@@ -481,7 +488,6 @@ def main():
                 }
                 continue
 
-            # Run episode with error handling
             try:
                 result = agent.run_episode()
                 results["tasks"][task_id] = result
@@ -505,7 +511,6 @@ def main():
                 "success": False
             }
 
-    # Write results to file (not stdout - keep stdout clean)
     print(f"[INFO] Writing results to baseline_results.json", flush=True)
     try:
         with open("baseline_results.json", "w") as f:
@@ -513,11 +518,8 @@ def main():
         print(f"[INFO] Results written successfully", flush=True)
     except Exception as e:
         print(f"[ERROR] Failed to write results file: {type(e).__name__}: {e}", flush=True)
-        import traceback
-        traceback.print_exc(file=sys.stderr)
 
     print(f"[INFO] Inference complete", flush=True)
-    # Always exit with 0 to indicate script completed (even if some tasks failed)
     sys.exit(0)
 
 
@@ -525,10 +527,9 @@ if __name__ == "__main__":
     try:
         main()
     except SystemExit:
-        # Allow sys.exit() to work normally
         raise
     except Exception as e:
         print(f"[CRITICAL] Unhandled exception in main: {type(e).__name__}: {e}", flush=True)
         import traceback
         traceback.print_exc(file=sys.stderr)
-        sys.exit(0)  # Exit gracefully even on critical error
+        sys.exit(0)  # Always exit 0
