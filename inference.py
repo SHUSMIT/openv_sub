@@ -416,12 +416,19 @@ class EmailTriageAgent:
 
             success = final_summary.get("success", False) if final_summary else False
             total_steps = final_summary.get("total_steps", step_num) if final_summary else step_num
+            final_reward = final_summary.get("final_reward", 0.0) if final_summary else sum(step_rewards) if step_rewards else 0.0
+            
+            # Calculate score (normalize to 0.0-1.0 range)
+            # Assuming max cumulative reward is around 10.0 for the episode
+            score = min(max(float(final_reward) / 10.0, 0.0), 1.0) if final_reward else 0.0
+            
             rewards_str = ",".join(f"{r:.2f}" for r in step_rewards) if step_rewards else ""
 
-            print(f"[END] success={str(success).lower()} steps={total_steps} rewards={rewards_str}", flush=True)
+            print(f"[END] success={str(success).lower()} steps={total_steps} score={score:.2f} rewards={rewards_str}", flush=True)
         except Exception as e:
             print(f"[ERROR] Failed to emit [END] line: {e}", flush=True)
-            print(f"[END] success=false steps={step_num} rewards={','.join(f'{r:.2f}' for r in step_rewards) if step_rewards else ''}", flush=True)
+            rewards_str = ','.join(f'{r:.2f}' for r in step_rewards) if step_rewards else ''
+            print(f"[END] success=false steps={step_num} score=0.00 rewards={rewards_str}", flush=True)
 
         # Return results
         try:

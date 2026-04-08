@@ -61,14 +61,31 @@ async def reset(
 ):
     """Reset environment for new episode"""
     try:
-        env = get_or_create_env(task_id, seed)
-        obs = env.reset()
-        return {
-            "status": "success",
-            "observation": json.loads(obs.model_dump_json()),
-        }
+        try:
+            env = get_or_create_env(task_id, seed)
+        except Exception as e:
+            print(f"[ERROR] Failed to get/create environment: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Environment creation failed: {str(e)}")
+        
+        try:
+            obs = env.reset()
+        except Exception as e:
+            print(f"[ERROR] Failed to reset environment: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Reset failed: {str(e)}")
+        
+        try:
+            return {
+                "status": "success",
+                "observation": json.loads(obs.model_dump_json()),
+            }
+        except Exception as e:
+            print(f"[ERROR] Failed to serialize observation: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Serialization failed: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"[ERROR] Unhandled exception in /reset: {type(e).__name__}: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Unhandled error: {str(e)}")
 
 
 @app.post("/step")
@@ -79,18 +96,42 @@ async def step(
 ):
     """Execute one environment step"""
     try:
-        env = get_or_create_env(task_id, seed)
-        action_obj = Action(**action)
-        obs, reward, info = env.step(action_obj)
+        try:
+            env = get_or_create_env(task_id, seed)
+        except Exception as e:
+            print(f"[ERROR] Failed to get environment in /step: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Environment error: {str(e)}")
+        
+        try:
+            action_obj = Action(**action)
+        except Exception as e:
+            print(f"[ERROR] Failed to parse action: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Invalid action: {str(e)}")
+        
+        try:
+            result = env.step(action_obj)
+            if result is None or len(result) < 3:
+                raise ValueError("Invalid environment step result")
+            obs, reward, info = result
+        except Exception as e:
+            print(f"[ERROR] Failed to execute environment step: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Step failed: {str(e)}")
 
-        return {
-            "status": "success",
-            "observation": json.loads(obs.model_dump_json()),
-            "reward": json.loads(reward.model_dump_json()),
-            "info": info,
-        }
+        try:
+            return {
+                "status": "success",
+                "observation": json.loads(obs.model_dump_json()) if obs else None,
+                "reward": json.loads(reward.model_dump_json()) if reward else None,
+                "info": info if info else {},
+            }
+        except Exception as e:
+            print(f"[ERROR] Failed to serialize step result: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Serialization failed: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"[ERROR] Unhandled exception in /step: {type(e).__name__}: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Unhandled error: {str(e)}")
 
 
 @app.get("/state")
@@ -100,14 +141,31 @@ async def state(
 ):
     """Get current environment state (read-only snapshot)"""
     try:
-        env = get_or_create_env(task_id, seed)
-        state_obj = env.state()
-        return {
-            "status": "success",
-            "state": json.loads(state_obj.model_dump_json()),
-        }
+        try:
+            env = get_or_create_env(task_id, seed)
+        except Exception as e:
+            print(f"[ERROR] Failed to get environment in /state: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Environment error: {str(e)}")
+        
+        try:
+            state_obj = env.state()
+        except Exception as e:
+            print(f"[ERROR] Failed to get state: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"State retrieval failed: {str(e)}")
+        
+        try:
+            return {
+                "status": "success",
+                "state": json.loads(state_obj.model_dump_json()) if state_obj else None,
+            }
+        except Exception as e:
+            print(f"[ERROR] Failed to serialize state: {e}", flush=True)
+            raise HTTPException(status_code=400, detail=f"Serialization failed: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"[ERROR] Unhandled exception in /state: {type(e).__name__}: {e}", flush=True)
+        raise HTTPException(status_code=500, detail=f"Unhandled error: {str(e)}")
 
 
 @app.get("/episode-summary")
