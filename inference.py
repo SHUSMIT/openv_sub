@@ -41,6 +41,14 @@ API_KEY = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 client = None
 
 
+def _clamp_score(score: float) -> float:
+    """
+    Clamp score to be STRICTLY between 0 and 1 (exclusive).
+    The validator rejects exactly 0.0 or 1.0.
+    """
+    return max(0.01, min(0.99, float(score)))
+
+
 def _init_client():
     """Initialize OpenAI client with lazy initialization and validation"""
     global client
@@ -124,12 +132,7 @@ class EmailTriageAgent:
             content = response.choices[0].message.content if response.choices else None
             return content or "{}"
 
-        # openai v1 specific exceptions
         except Exception as e:
-            # Catch ALL exception types from openai v1:
-            # openai.APIConnectionError, openai.APITimeoutError,
-            # openai.AuthenticationError, openai.RateLimitError,
-            # openai.APIStatusError, openai.BadRequestError, etc.
             err_type = type(e).__name__
             err_module = type(e).__module__
             print(f"[ERROR] LLM API call failed ({err_module}.{err_type}): {e}", flush=True)
@@ -145,7 +148,6 @@ class EmailTriageAgent:
             text = response_text.strip()
             if text.startswith("```"):
                 lines = text.split("\n")
-                # Find the closing fence
                 end_idx = len(lines)
                 for i in range(1, len(lines)):
                     if lines[i].strip() == "```":
@@ -303,8 +305,8 @@ class EmailTriageAgent:
                 obs = self.env.reset()
             except Exception as e:
                 print(f"[ERROR] Environment reset failed: {type(e).__name__}: {e}", flush=True)
-                # FIXED: include score= field in all [END] lines
-                print(f"[END] success=false steps=0 score=0.00 rewards=", flush=True)
+                # score must be strictly between 0 and 1
+                print(f"[END] success=false steps=0 score=0.01 rewards=", flush=True)
                 return {
                     "task_id": self.task_id,
                     "model": self.model,
@@ -381,7 +383,6 @@ class EmailTriageAgent:
                               f"done={done_str} error={error_val}", flush=True)
                     except Exception as e:
                         print(f"[ERROR] Failed to emit [STEP] line: {e}", flush=True)
-                        # Still emit a minimal valid STEP line
                         print(f"[STEP] step={step_num} action=unknown reward=0.00 done=false error=\"step_log_error\"", flush=True)
 
                     # Collect episode details
@@ -402,7 +403,6 @@ class EmailTriageAgent:
                 except Exception as e:
                     print(f"[ERROR] Unhandled error in step {step_num}: {type(e).__name__}: {e}", flush=True)
                     last_error = f"step_error_{step_num}"
-                    # Emit a fallback STEP line so output parsing doesn't break
                     print(f"[STEP] step={step_num} action=fallback reward=0.00 done=false error=\"{last_error}\"", flush=True)
                     break
 
@@ -410,7 +410,7 @@ class EmailTriageAgent:
             print(f"[ERROR] Unhandled exception in episode: {type(e).__name__}: {e}", flush=True)
             last_error = "episode_error"
 
-        # Emit [END] line — ALWAYS emitted, ALWAYS includes score=
+        # Emit [END] line — ALWAYS emitted, ALWAYS with score strictly in (0, 1)
         try:
             final_summary = {}
             try:
@@ -427,16 +427,18 @@ class EmailTriageAgent:
                 else (sum(step_rewards) if step_rewards else 0.0)
             )
 
-            # Normalize score to [0, 1]
-            score = min(max(float(final_reward) / 10.0, 0.0), 1.0) if final_reward else 0.0
+            # Normalize score to STRICTLY (0, 1) — never 0.0 or 1.0
+            raw_score = float(final_reward) / 10.0 if final_reward else 0.0
+            score = _clamp_score(raw_score)  # guaranteed in [0.01, 0.99]
+
             rewards_str = ",".join(f"{r:.2f}" for r in step_rewards) if step_rewards else ""
 
-            print(f"[END] success={str(success).lower()} steps={total_steps} score={score:.2f} rewards={rewards_str}", flush=True)
+            print(f"[END] success={str(success).lower()} steps={total_steps} score={score:.4f} rewards={rewards_str}", flush=True)
         except Exception as e:
             print(f"[ERROR] Failed to emit [END] line: {e}", flush=True)
-            # Last-resort fallback — always valid
             rewards_str = ",".join(f"{r:.2f}" for r in step_rewards) if step_rewards else ""
-            print(f"[END] success=false steps={step_num} score=0.00 rewards={rewards_str}", flush=True)
+            # 0.01 is the safe fallback — never 0.0
+            print(f"[END] success=false steps={step_num} score=0.01 rewards={rewards_str}", flush=True)
 
         # Return results dict
         try:

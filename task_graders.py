@@ -11,15 +11,17 @@ from models import (
 
 def normalize_score(score: float) -> float:
     """
-    Normalize score to be strictly between 0 and 1 (exclusive boundaries).
-    Validator rejects exactly 0.0 or 1.0, requires 0 < score < 1.
-    Maps expected range [-0.5, 1.0] to (0.01, 0.99).
+    Normalize score to be STRICTLY between 0 and 1 (exclusive boundaries).
+    The validator rejects exactly 0.0 or 1.0 — score must satisfy 0 < score < 1.
+
+    Maps any float input to the safe range [0.01, 0.99].
+    Input range expected: roughly [-0.5, 1.0]
     """
-    # First clamp to [-0.5, 1.0]
-    clamped = max(-0.5, min(1.0, score))
-    # Linear map from [-0.5, 1.0] to (0.01, 0.99)
-    # Range [-0.5, 1.0] is 1.5 units, map to [0.01, 0.99] (0.98 units)
+    # Clamp to [-0.5, 1.0] working range
+    clamped = max(-0.5, min(1.0, float(score)))
+    # Linear map from [-0.5, 1.0] (span 1.5) → [0.01, 0.99] (span 0.98)
     normalized = 0.01 + (clamped - (-0.5)) / 1.5 * 0.98
+    # Final safety clamp — guarantees strictly (0, 1), never exactly 0.0 or 1.0
     return max(0.01, min(0.99, normalized))
 
 
@@ -72,10 +74,8 @@ class EmailPriorityGrader:
                 reward = 0.0
 
             reward = max(-0.25, reward - (1 - action.classify_priority.confidence) * 0.2)
-            # Normalize to (0, 1) strictly for validator
-            reward = normalize_score(reward)
-
-            return reward, {
+            # normalize_score guarantees result is strictly in (0, 1)
+            return normalize_score(reward), {
                 "ground_truth": ground_truth,
                 "predicted": predicted,
                 "distance": distance,
